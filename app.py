@@ -19,7 +19,7 @@ st.caption(
 # 🔐 관리자 사이드바 추가
 # ------------------------------------------
 st.sidebar.title("🔐 관리자 설정")
-admin_password = st.sidebar.text_input("데이터 편집 비밀번호", type="vct2026")
+admin_password = st.sidebar.text_input("데이터 편집 비밀번호", type="password")
 # ------------------------------------------
 
 # 이미지 데이터(Stage 1, 2) 합산치 완벽 동기화 테이블
