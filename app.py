@@ -159,7 +159,7 @@ DEFAULT_POINTS_DATA = [
         "Stage 1": 2,
         "Masters 2": 0,
         "Stage 2": 3,
-        "S2_Rank": 99,
+        "S2_Rank": 10,
         "M2_Rank": 99,
         "S1_Rank": 8,
         "M1_Rank": 99,
