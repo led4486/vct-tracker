@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("🎮 VCT 2026 Champions 실시간 브라켓 시뮬레이터")
-st.caption("Upper Semi GE 승리 고정 | 플레이오프 단계별 순위(S2_Rank) 자동 변동 및 실시간 포인트 반영 시스템")
+st.caption("Upper Semi GE 승리 고정 | Stage 2 순위(S2_Rank) 자동 변동 및 전체 상세 표 통합 버전")
 
 # ------------------------------------------
 # 🔐 관리자 사이드바
@@ -50,7 +50,7 @@ playin_challenger_teams = ["ONSIDE GAMING (ONG)", "Sharper Esport (SP)", "QT DiG
 alive_teams = ["Nongshim RedForce", "VARREL", "Global Esports", "Gen.G Esports", "Paper Rex", "ONSIDE GAMING (ONG)", "KRX", "T1"]
 
 # ==========================================
-# 3. UI 및 동적 대진표 생성기
+# 3. 탭 구성 및 메인 로직
 # ==========================================
 tab1, tab2 = st.tabs(["📊 1. 전체 브라켓 동적 시뮬레이터", "🏆 2. 데이터 편집"])
 
@@ -64,17 +64,17 @@ with tab2:
 
 with tab1:
     st.subheader("🎯 잔여 플레이오프 전체 매치 진행상황 입력")
-    st.markdown("Upper Semi는 **GE 승리**로 고정되었습니다. 남은 경기의 승자를 선택하면 **패배한 팀의 순위(S2_Rank)와 포인트가 공식 룰에 맞게 실시간 갱신**됩니다.")
+    st.markdown("Upper Semi는 **GE 승리**로 고정되었습니다. 남은 경기의 승자를 선택하면 탈락 팀의 순위(S2_Rank)와 포인트가 공식 룰에 맞게 실시간 갱신됩니다.")
 
     match_labels = {}
-    fixed_outcomes = {0: 1} # 0번 매치(Upper Semi) GE 승리(1)로 강제 고정
+    fixed_outcomes = {0: 1} # Upper Semi GE 승리 고정
 
     def match_ui(idx, col, title, t1, t2, w_place, l_place=None, default_idx=0):
         if idx == 0:
             col.markdown(f"**{title}**")
             col.info("🔥 Global Esports 승리 (확정)")
             match_labels[idx] = (t1, t2)
-            return t2, t1 # 승자 GE, 패자 VARREL
+            return t2, t1
             
         opts = ["미정", f"{t1} 승", f"{t2} 승"]
         res = col.radio(title, opts, key=f"m_{idx}", index=default_idx)
@@ -108,9 +108,10 @@ with tab1:
     w_m7, l_m7 = match_ui(7, c8, "🔥 Lower Final", l_m3, w_m6, "[LF 승자]", "[LF 패자]")
     w_m8, l_m8 = match_ui(8, c9, "🏆 Grand Final", w_m3, w_m7, "[우승]", "[준우승]")
 
-    # ----------------------------------------------------
-    # 🎲 9경기 512개 시나리오 전수조사 및 순위(S2_Rank) 부여
-    # ----------------------------------------------------
+    st.markdown("---")
+    st.subheader("📊 VCT Pacific 공식 챔피언스 진출 현황 및 실시간 확률")
+
+    # 기본 데이터 전처리
     raw_df = st.session_state.points_table.copy()
     score_cols = ["Kickoff", "Masters 1", "Stage 1", "Masters 2", "Stage 2"]
     for col in score_cols: raw_df[col] = pd.to_numeric(raw_df[col], errors="coerce").fillna(0)
@@ -118,6 +119,9 @@ with tab1:
     
     base_stats_dict = {row["팀명"]: row["Total Points"] for _, row in raw_df.iterrows()}
 
+    # ----------------------------------------------------
+    # 🎲 9경기 512개 시나리오 전수조사 및 순위(S2_Rank) 부여
+    # ----------------------------------------------------
     valid_universes = []
     qual_counts = {t: 0 for t in all_teams}
     team_success_ranks = {t: set() for t in all_teams}
@@ -155,31 +159,21 @@ with tab1:
 
         placements = {1: c_w8, 2: c_l8, 3: c_l7, 4: c_l6}
 
-        # ----------------------------------------------------
-        # 📌 단계별 탈락 팀 Stage 2 순위 매핑 (S2_Rank)
-        # Lower R1 패자(2팀) > 8위
-        # Lower R2 패자(2팀) > 6위
-        # Lower R3 패자(1팀) > 4위
-        # Lower Final 패자(1팀) > 3위
-        # Grand Final 패자(1팀) > 2위
-        # Grand Final 승자(1팀) > 1위
-        # ----------------------------------------------------
         sim_ranks = {t: 99 for t in all_teams}
         sim_ranks[c_w8] = 1
         sim_ranks[c_l8] = 2
         sim_ranks[c_l7] = 3
         sim_ranks[c_l6] = 4
-        sim_ranks[c_l4] = 6 # Lower R2 패자
-        sim_ranks[c_l5] = 6 # Lower R2 패자
-        sim_ranks[c_l1] = 8 # Lower R1 패자
-        sim_ranks[c_l2] = 8 # Lower R1 패자
-        sim_ranks[c_l0] = 5 # Upper Semi 패자는 Upper Final 패자와 동급이거나 하위 R2 진출하므로 유동적 (기본유지)
+        sim_ranks[c_l4] = 6
+        sim_ranks[c_l5] = 6
+        sim_ranks[c_l1] = 8
+        sim_ranks[c_l2] = 8
+        sim_ranks[c_l0] = 5
 
         sim_pts = base_stats_dict.copy()
         sim_pts[c_l7] += 5
         sim_pts[c_l6] += 4
 
-        # 동률 순위 산정용 타이브레이커 튜플 구성
         tiebreaker_stats = {}
         for tname in all_teams:
             s2_val = sim_ranks[tname]
@@ -210,21 +204,23 @@ with tab1:
 
         valid_universes.append((combo, qualified, placements))
         for t in qualified: qual_counts[t] += 1
+        for t in qualified:
+            rank = 5
+            for r, team in placements.items():
+                if team == t: rank = r
+            team_success_ranks[t].add(rank)
 
     total_valid = len(valid_universes)
 
     # ----------------------------------------------------
     # 🎯 UI 표출용 실시간 점수 및 순위 반영
     # ----------------------------------------------------
-    l1_losers = {l_m1} if l_m1 else set()
-    l2_losers = {l_m2} if l_m2 else set()
     l6_set = set(u[2][4] for u in valid_universes)
     l7_set = set(u[2][3] for u in valid_universes)
     
     fixed_4th = l6_set.pop() if len(l6_set) == 1 else None
     fixed_3rd = l7_set.pop() if len(l7_set) == 1 else None
 
-    # 실시간 포인트 및 순위(S2_Rank) 덮어쓰기
     if l_m1 in all_teams: raw_df.loc[raw_df["팀명"] == l_m1, "S2_Rank"] = 8
     if l_m2 in all_teams: raw_df.loc[raw_df["팀명"] == l_m2, "S2_Rank"] = 8
     if fixed_4th:
@@ -235,6 +231,14 @@ with tab1:
         raw_df.loc[raw_df["팀명"] == fixed_3rd, "Stage 2"] += 5
         raw_df.loc[raw_df["팀명"] == fixed_3rd, "Total Points"] += 5
         raw_df.loc[raw_df["팀명"] == fixed_3rd, "S2_Rank"] = 3
+
+    # 동률 텍스트 생성용
+    points_counts = raw_df["Total Points"].value_counts()
+    tie_descriptions = []
+    for i, row in raw_df.iterrows():
+        pts = row["Total Points"]
+        tie_descriptions.append("동률 처리 규칙 적용" if points_counts[pts] > 1 else "단독 순위")
+    raw_df["동률 규정 적용 결과"] = tie_descriptions
 
     # ----------------------------------------------------
     # 🧠 AI 힌트 및 표출 로직
@@ -277,24 +281,40 @@ with tab1:
         status_list.append(cond_text)
         prob_list.append(f"{prob:.1f}%")
 
-    raw_df["경우의 수 및 진출 상태"] = status_list
+    raw_df["Champions 진출 상태"] = status_list
     raw_df["진출 확률 (%)"] = prob_list
 
-    display_cols = ["팀명", "Total Points", "진출 확률 (%)", "경우의 수 및 진출 상태", "S2_Rank", "Stage 2"]
+    # ==========================================
+    # 4. 테이블 분리 표출 및 하이라이트 (기존 표 복원)
+    # ==========================================
+    main_display_cols = ["팀명", "Total Points", "동률 규정 적용 결과", "Champions 진출 상태", "진출 확률 (%)"]
+    detail_display_cols = ["팀명", "Total Points", "Kickoff", "Masters 1", "Stage 1", "Masters 2", "Stage 2"]
 
     def highlight_rows(row):
-        status = str(row["경우의 수 및 진출 상태"])
-        if "100% 진출 확정" in status:
+        status = str(row.get("Champions 진출 상태", ""))
+        if "100% 진출 확정" in status or "🏆" in status:
             return ["background-color: #fff3cc; color: #000000; font-weight: bold;"] * len(row)
-        elif "탈락 확정" in status:
+        elif "탈락 확정" in status or "❌" in status:
             return ["background-color: #f0f0f0; color: #888888;"] * len(row)
         elif "💡AI" in status:
             return ["background-color: #e6f7ff; color: #000000;"] * len(row)
+        elif "🔥" in status:
+            return ["background-color: #ffe5d0; color: #000000;"] * len(row)
         return [""] * len(row)
 
     final_df = raw_df.sort_values(by="Total Points", ascending=False).reset_index(drop=True)
     final_df.index = final_df.index + 1
     final_df.index.name = "현재 순위"
 
-    st.dataframe(final_df[display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
+    # 1번 표: 진출 현황 및 확률 표
+    st.dataframe(final_df[main_display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("📈 대회별 획득 포인트 상세 내역")
+    
+    # 2번 표: 상세 내역 표
+    detail_df = final_df[detail_display_cols + ["Champions 진출 상태"]]
+    styled_detail = detail_df.style.apply(highlight_rows, axis=1).hide(axis="columns", subset=["Champions 진출 상태"])
+    st.dataframe(styled_detail, use_container_width=True)
+
     st.markdown("---")
