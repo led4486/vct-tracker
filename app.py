@@ -64,12 +64,18 @@ with tab2:
 
 with tab1:
     st.subheader("🎯 잔여 플레이오프 전체 매치 진행상황 입력")
-    st.markdown("특정 경기의 승자를 선택하면 다음 라운드 대진표가 자동으로 완성되며, **3위(+5점), 4위(+4점) 확정 시 표의 점수가 즉시 상승**합니다.")
+    st.markdown("Upper Semi는 **GE 승리**로 고정되었습니다. 남은 경기의 승자를 선택하면 **3위(+5점), 4위(+4점)** 및 단계별 탈락 순위가 실시간 반영됩니다.")
 
     match_labels = {}
-    fixed_outcomes = {}
+    fixed_outcomes = {0: 1} # Upper Semi GE 승리(1) 고정
 
     def match_ui(idx, col, title, t1, t2, w_place, l_place=None):
+        if idx == 0:
+            col.markdown(f"**{title}**")
+            col.info("🔥 Global Esports 승리 (확정)")
+            match_labels[idx] = (t1, t2)
+            return t2, t1
+            
         opts = ["미정", f"{t1} 승", f"{t2} 승"]
         res = col.radio(title, opts, key=f"m_{idx}")
         match_labels[idx] = (t1, t2)
@@ -85,20 +91,20 @@ with tab1:
     st.markdown("#### 🔹 Round 1 (상위/하위)")
     c1, c2, c3 = st.columns(3)
     w_m0, l_m0 = match_ui(0, c1, "⚔️ Upper Semi", "VARREL", "Global Esports", "[US 승자]", "[US 패자]")
-    w_m1, _    = match_ui(1, c2, "🛡️ Lower R1 (1)", "Paper Rex", "ONSIDE GAMING (ONG)", "[LR1(1) 승자]")
-    w_m2, _    = match_ui(2, c3, "🛡️ Lower R1 (2)", "KRX", "T1", "[LR1(2) 승자]")
+    w_m1, l_m1 = match_ui(1, c2, "🛡️ Lower R1 (1)", "Paper Rex", "ONSIDE GAMING (ONG)", "[LR1(1) 승자]", "[LR1(1) 패자]")
+    w_m2, l_m2 = match_ui(2, c3, "🛡️ Lower R1 (2)", "KRX", "T1", "[LR1(2) 승자]", "[LR1(2) 패자]")
 
     # [2라운드]
     st.markdown("#### 🔹 Round 2 (어퍼 결승 / 하위 R2)")
     c4, c5, c6 = st.columns(3)
     w_m3, l_m3 = match_ui(3, c4, "🔥 Upper Final", "Nongshim RedForce", w_m0, "[UF 승자]", "[UF 패자]")
-    w_m4, _    = match_ui(4, c5, "🛡️ Lower R2 (1)", l_m0, w_m1, "[LR2(1) 승자]")
-    w_m5, _    = match_ui(5, c6, "🛡️ Lower R2 (2)", "Gen.G Esports", w_m2, "[LR2(2) 승자]")
+    w_m4, l_m4 = match_ui(4, c5, "🛡️ Lower R2 (1)", l_m0, w_m1, "[LR2(1) 승자]", "[LR2(1) 패자]")
+    w_m5, l_m5 = match_ui(5, c6, "🛡️ Lower R2 (2)", "Gen.G Esports", w_m2, "[LR2(2) 승자]", "[LR2(2) 패자]")
 
     # [3라운드 & 파이널]
     st.markdown("#### 🔹 Finals & Lower R3")
     c7, c8, c9 = st.columns(3)
-    w_m6, _    = match_ui(6, c7, "🛡️ Lower R3", w_m4, w_m5, "[LR3 승자]")
+    w_m6, l_m6 = match_ui(6, c7, "🛡️ Lower R3", w_m4, w_m5, "[LR3 승자]", "[LR3 패자]")
     w_m7, l_m7 = match_ui(7, c8, "🔥 Lower Final", l_m3, w_m6, "[LF 승자]", "[LF 패자]")
     w_m8, l_m8 = match_ui(8, c9, "🏆 Grand Final", w_m3, w_m7, "[우승]", "[준우승]")
 
@@ -112,18 +118,6 @@ with tab1:
     raw_df["Total Points"] = raw_df[score_cols].sum(axis=1)
     
     base_stats_dict = {row["팀명"]: row["Total Points"] for _, row in raw_df.iterrows()}
-    tiebreaker_stats = {}
-    for _, row in raw_df.iterrows():
-        tiebreaker_stats[row["팀명"]] = (
-            pd.to_numeric(row.get("S2_Rank", 99), errors="coerce"),
-            pd.to_numeric(row.get("M2_Rank", 99), errors="coerce"),
-            pd.to_numeric(row.get("S1_Rank", 99), errors="coerce"),
-            pd.to_numeric(row.get("M1_Rank", 99), errors="coerce"),
-            pd.to_numeric(row.get("KO_Rank", 99), errors="coerce"),
-            -pd.to_numeric(row.get("Reg_Wins", 0), errors="coerce"),
-            -pd.to_numeric(row.get("Reg_Map_Diff", 0), errors="coerce"),
-            -pd.to_numeric(row.get("Reg_Round_Diff", 0), errors="coerce")
-        )
 
     # ----------------------------------------------------
     # 🎲 9경기 512개 시나리오 몬테카를로 전수조사
@@ -133,41 +127,72 @@ with tab1:
     team_success_ranks = {t: set() for t in all_teams}
 
     for combo in itertools.product([0, 1], repeat=9):
-        # 고정된 결과 필터링
         skip = False
         for k, v in fixed_outcomes.items():
             if combo[k] != v: skip = True; break
         if skip: continue
 
-        # 브라켓 진행 
         c_w0 = "VARREL" if combo[0] == 0 else "Global Esports"
         c_l0 = "Global Esports" if combo[0] == 0 else "VARREL"
         c_w1 = "Paper Rex" if combo[1] == 0 else "ONSIDE GAMING (ONG)"
+        c_l1 = "ONSIDE GAMING (ONG)" if combo[1] == 0 else "Paper Rex"
         c_w2 = "KRX" if combo[2] == 0 else "T1"
+        c_l2 = "T1" if combo[2] == 0 else "KRX"
+        
         c_w3 = "Nongshim RedForce" if combo[3] == 0 else c_w0
         c_l3 = c_w0 if combo[3] == 0 else "Nongshim RedForce"
+        
         c_w4 = c_l0 if combo[4] == 0 else c_w1
+        c_l4 = c_w1 if combo[4] == 0 else c_l0
+        
         c_w5 = "Gen.G Esports" if combo[5] == 0 else c_w2
+        c_l5 = c_w2 if combo[5] == 0 else "Gen.G Esports"
+        
         c_w6 = c_w4 if combo[6] == 0 else c_w5
-        c_l6 = c_w5 if combo[6] == 0 else c_w4  # 4위 확정자 (Lower R3 패자)
+        c_l6 = c_w5 if combo[6] == 0 else c_w4  # 4위 (Lower R3 패자)
+        
         c_w7 = c_l3 if combo[7] == 0 else c_w6
-        c_l7 = c_w6 if combo[7] == 0 else c_l3  # 3위 확정자 (Lower Final 패자)
+        c_l7 = c_w6 if combo[7] == 0 else c_l3  # 3위 (Lower Final 패자)
+        
         c_w8 = c_w3 if combo[8] == 0 else c_w7  # 1위
         c_l8 = c_w7 if combo[8] == 0 else c_w3  # 2위
 
         placements = {1: c_w8, 2: c_l8, 3: c_l7, 4: c_l6}
 
-        # 3, 4위 포인트 추가 및 정렬 (시뮬레이션 내부)
+        # 시뮬레이션 내부 순위(S2_Rank) 부여 규칙 적용
+        sim_ranks = {t: 99 for t in all_teams}
+        sim_ranks[c_w8] = 1
+        sim_ranks[c_l8] = 2
+        sim_ranks[c_l7] = 3
+        sim_ranks[c_l6] = 4
+        sim_ranks[c_l4] = 6
+        sim_ranks[c_l5] = 6
+        sim_ranks[c_l1] = 8
+        sim_ranks[c_l2] = 8
+
         sim_pts = base_stats_dict.copy()
         sim_pts[c_l7] += 5
         sim_pts[c_l6] += 4
+
+        tiebreaker_stats = {}
+        for tname in all_teams:
+            s2_val = sim_ranks[tname]
+            tiebreaker_stats[tname] = (
+                s2_val,
+                pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "M2_Rank"], errors="coerce").values[0],
+                pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "S1_Rank"], errors="coerce").values[0],
+                pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "M1_Rank"], errors="coerce").values[0],
+                pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "KO_Rank"], errors="coerce").values[0],
+                -pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "Reg_Wins"], errors="coerce").values[0],
+                -pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "Reg_Map_Diff"], errors="coerce").values[0],
+                -pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "Reg_Round_Diff"], errors="coerce").values[0]
+            )
 
         sortable = []
         for tname in all_teams:
             sortable.append((-sim_pts[tname],) + tiebreaker_stats[tname] + (tname,))
         sortable.sort()
 
-        # 챔스 진출 4팀 선발
         qualified = set([c_w8, c_l8])
         for item in sortable:
             if len(qualified) >= 4: break
@@ -178,9 +203,8 @@ with tab1:
                 qualified.add(tname)
 
         valid_universes.append((combo, qualified, placements))
-        
+        for t in qualified: qual_counts[t] += 1
         for t in qualified:
-            qual_counts[t] += 1
             rank = 5
             for r, team in placements.items():
                 if team == t: rank = r
@@ -189,7 +213,7 @@ with tab1:
     total_valid = len(valid_universes)
 
     # ----------------------------------------------------
-    # 🎯 UI 표출용 실시간 점수 반영 (+4점, +5점)
+    # 🎯 UI 표출용 실시간 점수 및 S2_Rank 반영
     # ----------------------------------------------------
     l6_set = set(u[2][4] for u in valid_universes)
     l7_set = set(u[2][3] for u in valid_universes)
@@ -197,12 +221,17 @@ with tab1:
     fixed_4th = l6_set.pop() if len(l6_set) == 1 else None
     fixed_3rd = l7_set.pop() if len(l7_set) == 1 else None
 
+    # 패배 시 공식 순위(S2_Rank) 및 포인트 실시간 갱신
+    if l_m1 in all_teams: raw_df.loc[raw_df["팀명"] == l_m1, "S2_Rank"] = 8
+    if l_m2 in all_teams: raw_df.loc[raw_df["팀명"] == l_m2, "S2_Rank"] = 8
     if fixed_4th:
         raw_df.loc[raw_df["팀명"] == fixed_4th, "Stage 2"] += 4
         raw_df.loc[raw_df["팀명"] == fixed_4th, "Total Points"] += 4
+        raw_df.loc[raw_df["팀명"] == fixed_4th, "S2_Rank"] = 4
     if fixed_3rd:
         raw_df.loc[raw_df["팀명"] == fixed_3rd, "Stage 2"] += 5
         raw_df.loc[raw_df["팀명"] == fixed_3rd, "Total Points"] += 5
+        raw_df.loc[raw_df["팀명"] == fixed_3rd, "S2_Rank"] = 3
 
     # ----------------------------------------------------
     # 🧠 AI 분석: 남은 매치 결과 기반 100% 힌트 도출
@@ -287,4 +316,4 @@ with tab1:
     st.dataframe(final_df[display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
 
     st.markdown("---")
-    st.info("💡 **실시간 업데이트 안내:** 대진표에서 승자를 선택해 3위(Lower Final 패자)나 4위(Lower R3 패자)가 확정되면, 표의 **[Total Points]**에 점수가 즉시 반영됩니다!")
+   
