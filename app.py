@@ -49,6 +49,92 @@ all_teams = [row["팀명"] for row in DEFAULT_POINTS_DATA]
 playin_challenger_teams = ["ONSIDE GAMING (ONG)", "Sharper Esport (SP)", "QT DiGoo (QTD)", "Xipto Esports (XIP)"]
 alive_teams = ["Nongshim RedForce", "VARREL", "Global Esports", "Gen.G Esports", "Paper Rex", "ONSIDE GAMING (ONG)", "KRX", "T1"]
 
+# ----------------------------------------------------
+# ⚡ 연산 속도 향상을 위한 시뮬레이션 캐싱 함수 추가
+# ----------------------------------------------------
+@st.cache_data
+def run_simulation(fixed_outcomes_tuple, base_stats_dict, extra_stats_dict):
+    fixed_outcomes = dict(fixed_outcomes_tuple)
+    valid_universes = []
+    qual_counts = {t: 0 for t in all_teams}
+    team_success_ranks = {t: set() for t in all_teams}
+
+    for combo in itertools.product([0, 1], repeat=9):
+        skip = False
+        for k, v in fixed_outcomes.items():
+            if combo[k] != v:
+                skip = True
+                break
+        if skip:
+            continue
+
+        c_w0 = "VARREL" if combo[0] == 0 else "Global Esports"
+        c_l0 = "Global Esports" if combo[0] == 0 else "VARREL"
+        c_w1 = "Paper Rex" if combo[1] == 0 else "ONSIDE GAMING (ONG)"
+        c_l1 = "ONSIDE GAMING (ONG)" if combo[1] == 0 else "Paper Rex"
+        c_w2 = "KRX" if combo[2] == 0 else "T1"
+        c_l2 = "T1" if combo[2] == 0 else "KRX"
+        
+        c_w3 = "Nongshim RedForce" if combo[3] == 0 else c_w0
+        c_l3 = c_w0 if combo[3] == 0 else "Nongshim RedForce"
+        
+        c_w4 = c_l0 if combo[4] == 0 else c_w1
+        c_l4 = c_w1 if combo[4] == 0 else c_l0
+        
+        c_w5 = "Gen.G Esports" if combo[5] == 0 else c_w2
+        c_l5 = c_w2 if combo[5] == 0 else "Gen.G Esports"
+        
+        c_w6 = c_w4 if combo[6] == 0 else c_w5
+        c_l6 = c_w5 if combo[6] == 0 else c_w4  # 4위 (Lower R3 패자)
+        
+        c_w7 = c_l3 if combo[7] == 0 else c_w6
+        c_l7 = c_w6 if combo[7] == 0 else c_l3  # 3위 (Lower Final 패자)
+        
+        c_w8 = c_w3 if combo[8] == 0 else c_w7  # 1위
+        c_l8 = c_w7 if combo[8] == 0 else c_w3  # 2위
+
+        placements = {1: c_w8, 2: c_l8, 3: c_l7, 4: c_l6}
+
+        sim_ranks = {t: 99 for t in all_teams}
+        sim_ranks[c_w8], sim_ranks[c_l8], sim_ranks[c_l7], sim_ranks[c_l6] = 1, 2, 3, 4
+        sim_ranks[c_l4], sim_ranks[c_l5] = 6, 6
+        sim_ranks[c_l1], sim_ranks[c_l2] = 8, 8
+
+        sim_pts = base_stats_dict.copy()
+        sim_pts[c_l7] += 5
+        sim_pts[c_l6] += 4
+
+        sortable = []
+        for tname in all_teams:
+            s2_val = sim_ranks[tname]
+            ext = extra_stats_dict[tname]
+            tb_tuple = (s2_val, ext["M2"], ext["S1"], ext["M1"], ext["KO"], -ext["Reg_Wins"], -ext["Reg_Map"], -ext["Reg_Round"])
+            sortable.append((-sim_pts[tname],) + tb_tuple + (tname,))
+        sortable.sort()
+
+        qualified = set([c_w8, c_l8])
+        for item in sortable:
+            if len(qualified) >= 4:
+                break
+            tname = item[-1]
+            if tname in playin_challenger_teams:
+                if tname in placements.values():
+                    qualified.add(tname)
+            else:
+                qualified.add(tname)
+
+        valid_universes.append((combo, qualified, placements))
+        for t in qualified:
+            qual_counts[t] += 1
+            rank = 5
+            for r, team in placements.items():
+                if team == t:
+                    rank = r
+            team_success_ranks[t].add(rank)
+
+    return valid_universes, qual_counts, team_success_ranks
+
+
 # ==========================================
 # 3. UI 및 동적 대진표 생성기
 # ==========================================
@@ -111,104 +197,30 @@ with tab1:
     st.markdown("---")
     st.subheader("📊 VCT Pacific 실시간 챔피언스 진출 확률 및 누적 포인트 현황")
 
-    # 기본 데이터 전처리
+    # 기본 데이터 전처리 및 사전 딕셔너리 생성
     raw_df = st.session_state.points_table.copy()
     score_cols = ["Kickoff", "Masters 1", "Stage 1", "Masters 2", "Stage 2"]
     for col in score_cols: raw_df[col] = pd.to_numeric(raw_df[col], errors="coerce").fillna(0)
     raw_df["Total Points"] = raw_df[score_cols].sum(axis=1)
     
     base_stats_dict = {row["팀명"]: row["Total Points"] for _, row in raw_df.iterrows()}
+    extra_stats_dict = {}
+    for _, row in raw_df.iterrows():
+        extra_stats_dict[row["팀명"]] = {
+            "M2": pd.to_numeric(row.get("M2_Rank", 99), errors="coerce"),
+            "S1": pd.to_numeric(row.get("S1_Rank", 99), errors="coerce"),
+            "M1": pd.to_numeric(row.get("M1_Rank", 99), errors="coerce"),
+            "KO": pd.to_numeric(row.get("KO_Rank", 99), errors="coerce"),
+            "Reg_Wins": pd.to_numeric(row.get("Reg_Wins", 0), errors="coerce"),
+            "Reg_Map": pd.to_numeric(row.get("Reg_Map_Diff", 0), errors="coerce"),
+            "Reg_Round": pd.to_numeric(row.get("Reg_Round_Diff", 0), errors="coerce"),
+        }
 
     # ----------------------------------------------------
-    # 🎲 9경기 512개 시나리오 몬테카를로 전수조사
+    # 🎲 캐싱된 시뮬레이션 전수조사 호출 (속도 최적화 핵심)
     # ----------------------------------------------------
-    valid_universes = []
-    qual_counts = {t: 0 for t in all_teams}
-    team_success_ranks = {t: set() for t in all_teams}
-
-    for combo in itertools.product([0, 1], repeat=9):
-        skip = False
-        for k, v in fixed_outcomes.items():
-            if combo[k] != v: skip = True; break
-        if skip: continue
-
-        c_w0 = "VARREL" if combo[0] == 0 else "Global Esports"
-        c_l0 = "Global Esports" if combo[0] == 0 else "VARREL"
-        c_w1 = "Paper Rex" if combo[1] == 0 else "ONSIDE GAMING (ONG)"
-        c_l1 = "ONSIDE GAMING (ONG)" if combo[1] == 0 else "Paper Rex"
-        c_w2 = "KRX" if combo[2] == 0 else "T1"
-        c_l2 = "T1" if combo[2] == 0 else "KRX"
-        
-        c_w3 = "Nongshim RedForce" if combo[3] == 0 else c_w0
-        c_l3 = c_w0 if combo[3] == 0 else "Nongshim RedForce"
-        
-        c_w4 = c_l0 if combo[4] == 0 else c_w1
-        c_l4 = c_w1 if combo[4] == 0 else c_l0
-        
-        c_w5 = "Gen.G Esports" if combo[5] == 0 else c_w2
-        c_l5 = c_w2 if combo[5] == 0 else "Gen.G Esports"
-        
-        c_w6 = c_w4 if combo[6] == 0 else c_w5
-        c_l6 = c_w5 if combo[6] == 0 else c_w4  # 4위 (Lower R3 패자)
-        
-        c_w7 = c_l3 if combo[7] == 0 else c_w6
-        c_l7 = c_w6 if combo[7] == 0 else c_l3  # 3위 (Lower Final 패자)
-        
-        c_w8 = c_w3 if combo[8] == 0 else c_w7  # 1위
-        c_l8 = c_w7 if combo[8] == 0 else c_w3  # 2위
-
-        placements = {1: c_w8, 2: c_l8, 3: c_l7, 4: c_l6}
-
-        # 시뮬레이션 내부 순위(S2_Rank) 부여 규칙 적용
-        sim_ranks = {t: 99 for t in all_teams}
-        sim_ranks[c_w8] = 1
-        sim_ranks[c_l8] = 2
-        sim_ranks[c_l7] = 3
-        sim_ranks[c_l6] = 4
-        sim_ranks[c_l4] = 6
-        sim_ranks[c_l5] = 6
-        sim_ranks[c_l1] = 8
-        sim_ranks[c_l2] = 8
-
-        sim_pts = base_stats_dict.copy()
-        sim_pts[c_l7] += 5
-        sim_pts[c_l6] += 4
-
-        tiebreaker_stats = {}
-        for tname in all_teams:
-            s2_val = sim_ranks[tname]
-            tiebreaker_stats[tname] = (
-                s2_val,
-                pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "M2_Rank"], errors="coerce").values[0],
-                pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "S1_Rank"], errors="coerce").values[0],
-                pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "M1_Rank"], errors="coerce").values[0],
-                pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "KO_Rank"], errors="coerce").values[0],
-                -pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "Reg_Wins"], errors="coerce").values[0],
-                -pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "Reg_Map_Diff"], errors="coerce").values[0],
-                -pd.to_numeric(raw_df.loc[raw_df["팀명"]==tname, "Reg_Round_Diff"], errors="coerce").values[0]
-            )
-
-        sortable = []
-        for tname in all_teams:
-            sortable.append((-sim_pts[tname],) + tiebreaker_stats[tname] + (tname,))
-        sortable.sort()
-
-        qualified = set([c_w8, c_l8])
-        for item in sortable:
-            if len(qualified) >= 4: break
-            tname = item[-1]
-            if tname in playin_challenger_teams:
-                if tname in placements.values(): qualified.add(tname)
-            else:
-                qualified.add(tname)
-
-        valid_universes.append((combo, qualified, placements))
-        for t in qualified: qual_counts[t] += 1
-        for t in qualified:
-            rank = 5
-            for r, team in placements.items():
-                if team == t: rank = r
-            team_success_ranks[t].add(rank)
+    fixed_outcomes_tuple = tuple(sorted(fixed_outcomes.items()))
+    valid_universes, qual_counts, team_success_ranks = run_simulation(fixed_outcomes_tuple, base_stats_dict, extra_stats_dict)
 
     total_valid = len(valid_universes)
 
@@ -221,7 +233,6 @@ with tab1:
     fixed_4th = l6_set.pop() if len(l6_set) == 1 else None
     fixed_3rd = l7_set.pop() if len(l7_set) == 1 else None
 
-    # 패배 시 공식 순위(S2_Rank) 및 포인트 실시간 갱신
     if l_m1 in all_teams: raw_df.loc[raw_df["팀명"] == l_m1, "S2_Rank"] = 8
     if l_m2 in all_teams: raw_df.loc[raw_df["팀명"] == l_m2, "S2_Rank"] = 8
     if fixed_4th:
@@ -316,4 +327,4 @@ with tab1:
     st.dataframe(final_df[display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
 
     st.markdown("---")
-   
+    st.info("💡 **실시간 업데이트 안내:** 대진표에서 승자를 선택해 3위(Lower Final 패자)나 4위(Lower R3 패자)가 확정되면, 표의 **[Total Points]**와 순위 규정에 즉시 반영됩니다!")
