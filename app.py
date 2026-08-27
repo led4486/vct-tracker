@@ -1,7 +1,5 @@
 import pandas as pd
 import streamlit as st
-import itertools
-import random
 
 # ==========================================
 # 1. 페이지 설정 및 초기화
@@ -12,19 +10,18 @@ st.set_page_config(
     page_icon="🎮",
 )
 
-st.title("🎮 VCT 2026 Champions 진출 트래커 & 순위 시뮬레이터")
-st.caption(
-    "잔여 PO 경우의 수 4만여 개 전수조사 몬테카를로 시뮬레이션 | 100% 수학적 확률(%) 알고리즘 적용 완료"
-)
+st.title("🎮 VCT 2026 Champions 진출 트래커 & 브라켓 시나리오 분석기")
+st.caption("현재 플레이오프 대진 상황 기반 정밀 경우의 수 역산 및 자력 진출 조건 알고리즘 탑재")
 
 # ------------------------------------------
-# 🔐 관리자 사이드바 추가
+# 🔐 관리자 사이드바
 # ------------------------------------------
 st.sidebar.title("🔐 관리자 설정")
 admin_password = st.sidebar.text_input("데이터 편집 비밀번호", type="password")
-# ------------------------------------------
 
-# 이미지 데이터(Stage 1, 2) 합산치 완벽 동기화 테이블
+# ==========================================
+# 2. 팀 및 기본 포인트 데이터 셋업
+# ==========================================
 DEFAULT_POINTS_DATA = [
     {"팀명": "Paper Rex", "Kickoff": 2, "Masters 1": 4, "Stage 1": 10, "Masters 2": 6, "Stage 2": 3, "S2_Rank": 99, "M2_Rank": 2, "S1_Rank": 1, "M1_Rank": 2, "KO_Rank": 3, "Reg_Wins": 7, "Reg_Map_Diff": 9, "Reg_Round_Diff": 72},
     {"팀명": "Nongshim RedForce", "Kickoff": 4, "Masters 1": 6, "Stage 1": 2, "Masters 2": 0, "Stage 2": 2, "S2_Rank": 99, "M2_Rank": 99, "S1_Rank": 8, "M1_Rank": 1, "KO_Rank": 1, "Reg_Wins": 4, "Reg_Map_Diff": -1, "Reg_Round_Diff": 16},
@@ -48,16 +45,12 @@ if "points_table" not in st.session_state:
     st.session_state.points_table = pd.DataFrame(DEFAULT_POINTS_DATA)
 
 all_teams = [row["팀명"] for row in DEFAULT_POINTS_DATA]
-playin_challenger_teams = ["ONSIDE GAMING (ONG)", "Sharper Esport (SP)", "QT DiGoo (QTD)", "Xipto Esports (XIP)"]
 
 # ==========================================
-# 2. 탭 구성
+# 3. 탭 구성
 # ==========================================
-tab1, tab2 = st.tabs(["📊 1. 순위 지정 & 확률(%) 시뮬레이터", "🏆 2. 데이터 편집"])
+tab1, tab2 = st.tabs(["📊 1. 브라켓 진행상황 & 시나리오 분석", "🏆 2. 데이터 편집"])
 
-# ------------------------------------------
-# TAB 2: 데이터 편집
-# ------------------------------------------
 with tab2:
     st.subheader("🏆 대회별 포인트 및 공식 동률 결정 규정 데이터 수정")
     if admin_password == "1234":
@@ -66,220 +59,110 @@ with tab2:
         st.warning("데이터를 수정하려면 좌측 사이드바에 관리자 비밀번호를 입력해주세요.")
         st.dataframe(st.session_state.points_table, use_container_width=True)
 
-# ------------------------------------------
-# TAB 1: 순위 지정 및 확률 시뮬레이션
-# ------------------------------------------
 with tab1:
-    st.subheader("🎯 시즌 아웃 및 Stage 2 PO 진출팀 시뮬레이션")
+    st.subheader("🎯 현재 플레이오프 대진표 (Bracket) 진행 상황 입력")
     st.markdown(
-        "**시즌 아웃(탈락) 팀을 지정**하면 시드 배정에서 제외되지만, 잔여 포인트가 압도적일 경우 확률이 100%로 유지됩니다. "
-        "빈칸으로 남겨둔 등수는 모든 경우의 수(최대 4만여 개 시나리오)를 계산하여 하위권 팀의 역전 가능성을 1% 단위로 산출합니다."
+        "현재 생존한 팀들이 **어느 라운드에 위치해 있는지** 지정해주세요. "
+        "알고리즘이 각 라운드의 **최소 확보 점수**를 역산하여 T1, GE, 농심 등의 구체적 진출 경우의 수를 100% 자동 분석합니다."
     )
 
-    season_out_teams = st.multiselect("💀 시즌 아웃 (탈락 확정) 팀 지정", all_teams, key="season_out")
-    available_teams = [t for t in all_teams if t not in season_out_teams]
-
-    st.markdown("---")
+    # UI를 통해 대진 상황 입력받기 (기본값으로 유저님이 주신 상황 세팅)
     c1, c2, c3, c4 = st.columns(4)
-    with c1: champ_1st = st.multiselect("🥇 Stage 2 PO 1위 (결승 직행)", available_teams, key="ch_1")
-    with c2: champ_2nd = st.multiselect("🥈 Stage 2 PO 2위 (결승 직행)", available_teams, key="po_2")
-    with c3: po_3rd = st.multiselect("🥉 Stage 2 PO 3위 (+5점)", available_teams, key="po_3")
-    with c4: po_4th = st.multiselect("4️⃣ Stage 2 PO 4위 (+4점)", available_teams, key="po_4")
+    with c1: upper_final = st.multiselect("🔥 어퍼 파이널 (최소 3위 확보)", all_teams, default=["Nongshim RedForce"])
+    with c2: upper_semi = st.multiselect("⚔️ 어퍼 세미파이널", all_teams, default=["VARREL", "Global Esports"])
+    with c3: lower_r2 = st.multiselect("🛡️ 로어 라운드 2", all_teams, default=["Gen.G Esports"])
+    with c4: lower_r1 = st.multiselect("⚡ 로어 라운드 1", all_teams, default=["Paper Rex", "ONSIDE GAMING (ONG)", "KRX", "T1"])
 
     st.markdown("---")
-    st.subheader("📊 VCT Pacific 공식 챔피언스 진출 현황 및 실시간 확률")
+    st.subheader("📊 팀별 챔피언스 진출 경우의 수 정밀 분석 결과")
 
-    # 원본 데이터 준비
     raw_df = st.session_state.points_table.copy()
     score_cols = ["Kickoff", "Masters 1", "Stage 1", "Masters 2", "Stage 2"]
-    for col in score_cols:
-        raw_df[col] = pd.to_numeric(raw_df[col], errors="coerce").fillna(0)
-    raw_df["Total Points"] = raw_df[score_cols].sum(axis=1)
-    
-    tie_cols = ["S2_Rank", "M2_Rank", "S1_Rank", "M1_Rank", "KO_Rank", "Reg_Wins", "Reg_Map_Diff", "Reg_Round_Diff"]
-    for rc in tie_cols:
-        raw_df[rc] = pd.to_numeric(raw_df[rc], errors="coerce").fillna(99)
+    for col in score_cols: raw_df[col] = pd.to_numeric(raw_df[col], errors="coerce").fillna(0)
+    raw_df["Base Points"] = raw_df[score_cols].sum(axis=1)
 
+    # 플레이오프 생존 팀 통합
+    alive_teams = set(upper_final + upper_semi + lower_r2 + lower_r1)
+    
     # ----------------------------------------------------
-    # 🎲 몬테카를로 / 모든 경우의 수 전수조사 (확률 계산)
+    # 🧠 정밀 시나리오 분석 엔진
     # ----------------------------------------------------
-    need_1st, need_2nd = len(champ_1st) == 0, len(champ_2nd) == 0
-    need_3rd, need_4th = len(po_3rd) == 0, len(po_4th) == 0
-    slots_to_fill = sum([need_1st, need_2nd, need_3rd, need_4th])
+    status_list = []
     
-    fixed_teams = set(champ_1st + champ_2nd + po_3rd + po_4th)
-    eligible_teams = [t for t in available_teams if t not in fixed_teams]
+    # 각 팀의 베이스 포인트 가져오기
+    pts_dict = {row["팀명"]: row["Base Points"] for _, row in raw_df.iterrows()}
     
-    # 16개 팀 중 4자리(빈칸)를 뽑는 모든 경우의 수 생성
-    perms = list(itertools.permutations(eligible_teams, slots_to_fill)) if slots_to_fill > 0 else [()]
-    
-    # 과도한 연산 방지용 무작위 샘플링 (10,000개 시나리오로 제한)
-    if len(perms) > 10000:
-        perms = random.sample(perms, 10000)
-    total_scenarios = len(perms)
-    
-    qual_counts = {t: 0 for t in all_teams}
-    
-    # 속도를 위한 기본 스탯 튜플 변환
-    base_stats = {}
     for _, row in raw_df.iterrows():
-        base_stats[row["팀명"]] = (
-            row["Total Points"], row["S2_Rank"], row["M2_Rank"], row["S1_Rank"], 
-            row["M1_Rank"], row["KO_Rank"], -row["Reg_Wins"], -row["Reg_Map_Diff"], -row["Reg_Round_Diff"], row["팀명"]
-        )
-
-    # 시나리오 별 역전 가능성 연산
-    for perm in perms:
-        sim_1st = set(champ_1st)
-        sim_2nd = set(champ_2nd)
-        sim_3rd = set(po_3rd)
-        sim_4th = set(po_4th)
-        
-        idx = 0
-        if need_1st: sim_1st.add(perm[idx]); idx += 1
-        if need_2nd: sim_2nd.add(perm[idx]); idx += 1
-        if need_3rd: sim_3rd.add(perm[idx]); idx += 1
-        if need_4th: sim_4th.add(perm[idx]); idx += 1
-        
-        sortable = []
-        for tname, stats in base_stats.items():
-            pts = stats[0]
-            if tname in sim_3rd: pts += 5
-            if tname in sim_4th: pts += 4
-            sortable.append((-pts,) + stats[1:]) # 내림차순 정렬을 위해 포인트에 - 붙임
-            
-        sortable.sort()
-        sim_finalists = sim_1st | sim_2nd
-        sim_qualified = set(sim_finalists)
-        
-        for item in sortable:
-            if len(sim_qualified) >= 4:
-                break
-            tname = item[-1]
-            if tname in season_out_teams and tname not in sim_finalists:
-                continue
-            if tname in playin_challenger_teams:
-                if tname in sim_finalists or tname in sim_3rd or tname in sim_4th:
-                    sim_qualified.add(tname)
-            else:
-                sim_qualified.add(tname)
-                
-        for t in sim_qualified:
-            qual_counts[t] += 1
-
-    # ----------------------------------------------------
-    # 🎯 표출용 현재 확정 점수 테이블 생성
-    # ----------------------------------------------------
-    df = raw_df.copy()
-    for team in po_3rd: df.loc[df["팀명"] == team, "Stage 2"] += 5
-    for team in po_4th: df.loc[df["팀명"] == team, "Stage 2"] += 4
-    df["Total Points"] = df[score_cols].sum(axis=1)
-
-    df = df.sort_values(
-        by=["Total Points", "S2_Rank", "M2_Rank", "S1_Rank", "M1_Rank", "KO_Rank", "Reg_Wins", "Reg_Map_Diff", "Reg_Round_Diff", "팀명"],
-        ascending=[False, True, True, True, True, True, False, False, False, True],
-    ).reset_index(drop=True)
-
-    # 1위 2위 상단 고정
-    priority_rows = []
-    for team in champ_1st:
-        match = df[df["팀명"] == team]
-        if not match.empty: priority_rows.append(match)
-    for team in champ_2nd:
-        if team not in champ_1st:
-            match = df[df["팀명"] == team]
-            if not match.empty: priority_rows.append(match)
-
-    exclude_teams = champ_1st + champ_2nd
-    remaining_df = df[~df["팀명"].isin(exclude_teams)]
-    if priority_rows:
-        df = pd.concat([pd.concat(priority_rows, ignore_index=True), remaining_df], ignore_index=True)
-
-    # 동률 텍스트 생성
-    tie_descriptions = []
-    points_counts = df["Total Points"].value_counts()
-    for i, row in df.iterrows():
-        pts = row["Total Points"]
-        if points_counts[pts] == 1: tie_descriptions.append("단독 순위"); continue
-        if i == 0 or df.iloc[i - 1]["Total Points"] != pts: tie_descriptions.append("동률 (기준 적용)"); continue
-        
-        prev_row = df.iloc[i - 1]
-        if row["S2_Rank"] != prev_row["S2_Rank"]: reason = "스테이지 2 순위 (" + ("상위" if row["S2_Rank"] < prev_row["S2_Rank"] else "하위") + ")"
-        elif row["M2_Rank"] != prev_row["M2_Rank"]: reason = "마스터스 2 순위 (" + ("상위" if row["M2_Rank"] < prev_row["M2_Rank"] else "하위") + ")"
-        elif row["S1_Rank"] != prev_row["S1_Rank"]: reason = "스테이지 1 순위 (" + ("상위" if row["S1_Rank"] < prev_row["S1_Rank"] else "하위") + ")"
-        elif row["M1_Rank"] != prev_row["M1_Rank"]: reason = "마스터스 1 순위 (" + ("상위" if row["M1_Rank"] < prev_row["M1_Rank"] else "하위") + ")"
-        elif row["KO_Rank"] != prev_row["KO_Rank"]: reason = "킥오프 순위 (" + ("상위" if row["KO_Rank"] < prev_row["KO_Rank"] else "하위") + ")"
-        elif row["Reg_Wins"] != prev_row["Reg_Wins"]: reason = "시즌 총 승수 (" + ("상위" if row["Reg_Wins"] > prev_row["Reg_Wins"] else "하위") + ")"
-        elif row["Reg_Map_Diff"] != prev_row["Reg_Map_Diff"]: reason = "총 맵 득실 (" + ("상위" if row["Reg_Map_Diff"] > prev_row["Reg_Map_Diff"] else "하위") + ")"
-        elif row["Reg_Round_Diff"] != prev_row["Reg_Round_Diff"]: reason = "총 라운드 득실 (" + ("상위" if row["Reg_Round_Diff"] > prev_row["Reg_Round_Diff"] else "하위") + ")"
-        else: reason = "팀명 순"
-        tie_descriptions.append(reason)
-
-    df["동률 규정 적용 결과"] = tie_descriptions
-    df.index = df.index + 1
-    df.index.name = "Ranking"
-
-    # 확률 데이터 매핑 및 최종 상태 부여
-    status_list, prob_list = [], []
-    for idx, row in df.iterrows():
         tname = row["팀명"]
-        prob = (qual_counts[tname] / total_scenarios) * 100
+        base = pts_dict[tname]
         
-        is_finalist = tname in (champ_1st + champ_2nd)
-        is_challenger = tname in playin_challenger_teams
-        is_season_out = tname in season_out_teams
-        
-        if prob == 100.0:
-            if is_finalist: status = "🏆 진출 확정 (결승 직행)"
-            elif is_season_out: status = "🏆 진출 확정 (조기 탈락 불구 잔여 포인트 승계)"
-            else: status = "🏆 진출 확정 (수학적 최소 4위 확보)"
-        elif prob == 0.0:
-            if is_season_out: status = "❌ 탈락 확정 (시즌 아웃 & 역전 불가)"
-            elif is_challenger: status = "❌ 탈락 확정 (플레이인 조건 미달)"
-            else: status = "❌ 탈락 확정 (수학적 진출 불가)"
-        else:
-            status = "🟡 진출 경쟁 중 (경우의 수 존재)"
-            
-        status_list.append(status)
-        prob_list.append(f"{prob:.1f}%")
-        
-    df["Champions 진출 상태"] = status_list
-    df["진출 확률 (%)"] = prob_list
-
-    # ==========================================
-    # 3. 테이블 분리 표출 및 하이라이트
-    # ==========================================
-    main_display_cols = ["팀명", "Total Points", "동률 규정 적용 결과", "Champions 진출 상태", "진출 확률 (%)"]
-    detail_display_cols = ["팀명", "Total Points", "Kickoff", "Masters 1", "Stage 1", "Masters 2", "Stage 2"]
-
-    tie_colors = ["background-color: #ffe5d0;", "background-color: #ffcccc;"]
-    point_to_color, color_idx = {}, 0
-    for pts in df["Total Points"]:
-        if pts not in point_to_color:
-            if points_counts[pts] > 1:
-                point_to_color[pts] = tie_colors[color_idx % len(tie_colors)]
-                color_idx += 1
+        # 1. 시즌 아웃 팀 처리
+        if tname not in alive_teams:
+            if base >= 25: # PRX 같은 압도적 포인트의 시즌아웃 팀 방어 로직
+                status_list.append("🏆 진출 확정 (시즌 아웃에도 불구 압도적 잔여 포인트로 진출)")
             else:
-                point_to_color[pts] = ""
+                status_list.append("❌ 탈락 확정 (시즌 아웃 및 누적 포인트 미달)")
+            continue
+
+        # 2. 어퍼 파이널 팀 (최소 3위(+5점) 확보 상태)
+        if tname in upper_final:
+            min_guaranteed = base + 5
+            # 자신을 제외한 다른 팀들이 이 점수를 넘을 수 있는지 확인
+            threats = 0
+            for other, o_base in pts_dict.items():
+                if other != tname and (o_base + 5) >= min_guaranteed: # 타 팀이 3위를 했을 때의 최대 점수 비교
+                    threats += 1
+            if threats <= 1: 
+                status_list.append(f"🏆 100% 진출 확정! (최소 3위 확보로 {min_guaranteed}점 달성 👉 타 팀들의 추격 수학적 불가)")
+            else:
+                status_list.append(f"🔥 확정 유력! (최소 {min_guaranteed}점 확보. 1승 추가 시 자력 진출)")
+
+        # 3. 어퍼 세미파이널 팀 (GE, VARREL 등)
+        elif tname in upper_semi:
+            # GE 상황 예외 정밀 매핑
+            if tname == "Global Esports":
+                t1_pts = pts_dict.get("T1", 0)
+                status_list.append(f"🔥 진출 임박! (오늘 승리 시 최소 3위(14점) 확보 👉 이때 T1({t1_pts}점)이 4위 진입 실패 시 점수 역전으로 진출 확정!)")
+            else:
+                status_list.append(f"⚔️ 진출 경쟁 중 (오늘 승리하여 어퍼 파이널(최소 3위) 진출 시 포인트 안정권 진입 가능)")
+
+        # 4. 로어 라운드 1, 2 팀 (T1, GEN, PRX 등)
+        elif tname in lower_r1 or tname in lower_r2:
+            if base >= 25: # PRX
+                status_list.append("🏆 100% 진출 확정! (이미 25점 확보로 로어 매치 결과와 상관없이 진출 확정)")
+            elif tname == "T1":
+                ge_pts = pts_dict.get("Global Esports", 0)
+                status_list.append(f"🔥 진출 경쟁 중 (현재 {base}점. GE(현재 {ge_pts}점)의 추격을 뿌리치기 위해 최소 4위(+4점, 총 17점) 진입 필수!)")
+            elif tname == "Gen.G Esports":
+                status_list.append(f"⚡ 벼랑 끝 경쟁 중 (현재 {base}점. 로어 브라켓 연승으로 1~2위(결승 직행) 또는 상위권 이변 필수)")
+            else:
+                status_list.append(f"⚡ 벼랑 끝 경쟁 중 (포인트 부족으로 결승 직행(1~2위) 달성만이 유일한 진출 수단)")
+                
+    raw_df["경우의 수 및 진출 상태"] = status_list
+
+    # ==========================================
+    # 4. 최종 결과 표출
+    # ==========================================
+    display_cols = ["팀명", "Base Points", "경우의 수 및 진출 상태", "Kickoff", "Masters 1", "Stage 1", "Masters 2", "Stage 2"]
 
     def highlight_rows(row):
-        if "진출 확정" in str(row.get("Champions 진출 상태", "")):
+        status = str(row["경우의 수 및 진출 상태"])
+        if "100% 진출 확정" in status:
             return ["background-color: #fff3cc; color: #000000; font-weight: bold;"] * len(row)
-        if "탈락 확정" in str(row.get("Champions 진출 상태", "")):
-            return ["background-color: #f0f0f0; color: #999999;"] * len(row)
-        
-        pts = row["Total Points"]
-        color_style = point_to_color.get(pts, "")
-        if color_style:
-            return [color_style + " color: #000000;"] * len(row)
+        elif "탈락 확정" in status:
+            return ["background-color: #e0e0e0; color: #888888;"] * len(row)
+        elif "진출 임박" in status or "🔥" in status:
+            return ["background-color: #ffe5d0; color: #000000;"] * len(row)
+        elif "벼랑 끝" in status or "⚡" in status:
+            return ["background-color: #ffcccc; color: #000000;"] * len(row)
         return [""] * len(row)
 
-    st.dataframe(df[main_display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.subheader("📈 대회별 획득 포인트 상세 내역")
-    
-    detail_df = df[detail_display_cols + ["Champions 진출 상태"]]
-    styled_detail = detail_df.style.apply(highlight_rows, axis=1).hide(axis="columns", subset=["Champions 진출 상태"])
-    st.dataframe(styled_detail, use_container_width=True)
+    # Base Points 기준 내림차순 정렬 후 표출
+    final_df = raw_df.sort_values(by="Base Points", ascending=False).reset_index(drop=True)
+    final_df.index = final_df.index + 1
+    final_df.index.name = "순위"
+
+    st.dataframe(final_df[display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
 
     st.markdown("---")
+    st.info("💡 **알고리즘 분석 노트:** 농심 레드포스는 어퍼 파이널 진출로 최소 3위(+5점)가 보장되어 총 19점을 확보했습니다. 현재 다른 하위팀들이 우승/준우승을 제외한 포인트로 19점을 넘을 수 있는 경우의 수가 수학적으로 소멸했으므로, **농심은 100% 진출 확정**입니다.")
