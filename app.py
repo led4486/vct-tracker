@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("🎮 VCT 2026 Champions 실시간 브라켓 시뮬레이터")
-st.caption("Upper Semi GE 승리 고정 | Stage 2 순위(S2_Rank) 자동 변동 및 전체 상세 표 통합 버전")
+st.caption("Upper Semi GE 승리 고정 | Stage 2 순위 자동 변동 및 진출 확률 표 통합 버전")
 
 # ------------------------------------------
 # 🔐 관리자 사이드바
@@ -285,7 +285,7 @@ with tab1:
     raw_df["진출 확률 (%)"] = prob_list
 
     # ==========================================
-    # 4. 테이블 분리 표출 및 하이라이트 (기존 표 복원)
+    # 4. 테이블 분리 표출 및 하이라이트 (정상 출력 복원)
     # ==========================================
     main_display_cols = ["팀명", "Total Points", "동률 규정 적용 결과", "Champions 진출 상태", "진출 확률 (%)"]
     detail_display_cols = ["팀명", "Total Points", "Kickoff", "Masters 1", "Stage 1", "Masters 2", "Stage 2"]
@@ -306,13 +306,13 @@ with tab1:
     final_df.index = final_df.index + 1
     final_df.index.name = "현재 순위"
 
-    # 1번 표: 진출 현황 및 확률 표
+    # 메인 진출 확률 및 상태 표
     st.dataframe(final_df[main_display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     st.subheader("📈 대회별 획득 포인트 상세 내역")
     
-    # 2번 표: 상세 내역 표
+    # 상세 포인트 내역 표
     detail_df = final_df[detail_display_cols + ["Champions 진출 상태"]]
     styled_detail = detail_df.style.apply(highlight_rows, axis=1).hide(axis="columns", subset=["Champions 진출 상태"])
     st.dataframe(styled_detail, use_container_width=True)
