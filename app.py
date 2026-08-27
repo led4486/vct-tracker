@@ -327,4 +327,4 @@ with tab1:
     st.dataframe(final_df[display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
 
     st.markdown("---")
-    st.info("💡 **실시간 업데이트 안내:** 대진표에서 승자를 선택해 3위(Lower Final 패자)나 4위(Lower R3 패자)가 확정되면, 표의 **[Total Points]**와 순위 규정에 즉시 반영됩니다!")
+
