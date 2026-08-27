@@ -269,4 +269,4 @@ with tab1:
     st.dataframe(final_df[display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
 
     st.markdown("---")
-    st.info("💡 **AI 힌트 기능 사용법:** 진출 상태 열에 파란색으로 **[💡AI: '팀명' 승리 시 100% 확정]**이 보인다면, 위 라디오 버튼에서 해당 팀의 승리를 클릭해보세요! 실시간으로 확률이 100%로 변합니다.")
+    
