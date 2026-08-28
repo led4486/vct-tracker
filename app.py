@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("🎮 VCT 2026 Champions 실시간 브라켓 시뮬레이터")
-st.caption("플레이오프 9경기 전수조사 | 3위(+5점), 4위(+4점) 실시간 점수 반영 및 진출 힌트 AI 탑재")
+st.caption("Upper Semi GE, Lower R1 PRX & T1 승리 고정 | 3위(+5점), 4위(+4점) 실시간 점수 반영 및 진출 힌트 AI 탑재")
 
 # ------------------------------------------
 # 🔐 관리자 사이드바
@@ -150,15 +150,25 @@ with tab2:
 
 with tab1:
     st.subheader("🎯 잔여 플레이오프 전체 매치 진행상황 입력")
-    st.markdown("Upper Semi는 **GE 승리**로 고정되었습니다. 남은 경기의 승자를 선택하면 **3위(+5점), 4위(+4점)** 및 단계별 탈락 순위가 실시간 반영됩니다.")
+    st.markdown("Upper Semi는 **GE**, Lower R1은 **PRX, T1 승리**로 고정되었습니다. 남은 경기의 승자를 선택하면 **3위(+5점), 4위(+4점)** 및 단계별 탈락 순위가 실시간 반영됩니다.")
 
     match_labels = {}
-    fixed_outcomes = {0: 1} # Upper Semi GE 승리(1) 고정
+    fixed_outcomes = {0: 1, 1: 0, 2: 1} # Upper Semi GE 승리(1), LR1(1) PRX 승리(0), LR1(2) T1 승리(1) 고정
 
     def match_ui(idx, col, title, t1, t2, w_place, l_place=None):
         if idx == 0:
             col.markdown(f"**{title}**")
             col.info("🔥 Global Esports 승리 (확정)")
+            match_labels[idx] = (t1, t2)
+            return t2, t1
+        if idx == 1:
+            col.markdown(f"**{title}**")
+            col.info("🔥 Paper Rex 승리 (확정)")
+            match_labels[idx] = (t1, t2)
+            return t1, t2
+        if idx == 2:
+            col.markdown(f"**{title}**")
+            col.info("🔥 T1 승리 (확정)")
             match_labels[idx] = (t1, t2)
             return t2, t1
             
@@ -327,4 +337,4 @@ with tab1:
     st.dataframe(final_df[display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
 
     st.markdown("---")
-
+    st.info("💡 **실시간 업데이트 안내:** 대진표에서 승자를 선택해 3위(Lower Final 패자)나 4위(Lower R3 패자)가 확정되면, 표의 **[Total Points]**와 순위 규정에 즉시 반영됩니다!")
