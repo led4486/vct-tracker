@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("🎮 VCT 2026 Champions 실시간 브라켓 시뮬레이터")
-st.caption("Upper Semi GE, Lower R1 PRX & T1 승리 고정 | 3위(+5점), 4위(+4점) 실시간 점수 반영 및 진출 힌트 AI 탑재")
+st.caption("Upper Semi, Lower R1 & R2 승리 고정 | 3위(+5점), 4위(+4점) 실시간 점수 반영 및 진출 힌트 AI 탑재")
 
 # ------------------------------------------
 # 🔐 관리자 사이드바
@@ -50,7 +50,7 @@ playin_challenger_teams = ["ONSIDE GAMING (ONG)", "Sharper Esport (SP)", "QT DiG
 alive_teams = ["Nongshim RedForce", "VARREL", "Global Esports", "Gen.G Esports", "Paper Rex", "ONSIDE GAMING (ONG)", "KRX", "T1"]
 
 # ----------------------------------------------------
-# ⚡ 연산 속도 향상을 위한 시뮬레이션 캐싱 함수 추가
+# ⚡ 연산 속도 향상을 위한 시뮬레이션 캐싱 함수
 # ----------------------------------------------------
 @st.cache_data
 def run_simulation(fixed_outcomes_tuple, base_stats_dict, extra_stats_dict):
@@ -150,10 +150,11 @@ with tab2:
 
 with tab1:
     st.subheader("🎯 잔여 플레이오프 전체 매치 진행상황 입력")
-    st.markdown("Upper Semi는 **GE**, Lower R1은 **PRX, T1 승리**로 고정되었습니다. 남은 경기의 승자를 선택하면 **3위(+5점), 4위(+4점)** 및 단계별 탈락 순위가 실시간 반영됩니다.")
+    st.markdown("Upper Semi는 **GE**, Lower R1은 **PRX, T1**, Lower R2는 **VARREL, T1 승리**로 고정되었습니다. 남은 경기의 승자를 선택하면 **3위(+5점), 4위(+4점)** 및 단계별 탈락 순위가 실시간 반영됩니다.")
 
     match_labels = {}
-    fixed_outcomes = {0: 1, 1: 0, 2: 1} # Upper Semi GE 승리(1), LR1(1) PRX 승리(0), LR1(2) T1 승리(1) 고정
+    # 매치 고정 데이터: 0(GE), 1(PRX), 2(T1), 4(VARREL), 5(T1)
+    fixed_outcomes = {0: 1, 1: 0, 2: 1, 4: 0, 5: 1}
 
     def match_ui(idx, col, title, t1, t2, w_place, l_place=None):
         if idx == 0:
@@ -167,6 +168,16 @@ with tab1:
             match_labels[idx] = (t1, t2)
             return t1, t2
         if idx == 2:
+            col.markdown(f"**{title}**")
+            col.info("🔥 T1 승리 (확정)")
+            match_labels[idx] = (t1, t2)
+            return t2, t1
+        if idx == 4:
+            col.markdown(f"**{title}**")
+            col.info("🔥 VARREL 승리 (확정)")
+            match_labels[idx] = (t1, t2)
+            return t1, t2
+        if idx == 5:
             col.markdown(f"**{title}**")
             col.info("🔥 T1 승리 (확정)")
             match_labels[idx] = (t1, t2)
@@ -227,7 +238,7 @@ with tab1:
         }
 
     # ----------------------------------------------------
-    # 🎲 캐싱된 시뮬레이션 전수조사 호출 (속도 최적화 핵심)
+    # 🎲 캐싱된 시뮬레이션 전수조사 호출
     # ----------------------------------------------------
     fixed_outcomes_tuple = tuple(sorted(fixed_outcomes.items()))
     valid_universes, qual_counts, team_success_ranks = run_simulation(fixed_outcomes_tuple, base_stats_dict, extra_stats_dict)
@@ -243,8 +254,12 @@ with tab1:
     fixed_4th = l6_set.pop() if len(l6_set) == 1 else None
     fixed_3rd = l7_set.pop() if len(l7_set) == 1 else None
 
+    # 패배 시 공식 순위(S2_Rank) 및 포인트 갱신 
     if l_m1 in all_teams: raw_df.loc[raw_df["팀명"] == l_m1, "S2_Rank"] = 8
     if l_m2 in all_teams: raw_df.loc[raw_df["팀명"] == l_m2, "S2_Rank"] = 8
+    if l_m4 in all_teams: raw_df.loc[raw_df["팀명"] == l_m4, "S2_Rank"] = 6
+    if l_m5 in all_teams: raw_df.loc[raw_df["팀명"] == l_m5, "S2_Rank"] = 6
+        
     if fixed_4th:
         raw_df.loc[raw_df["팀명"] == fixed_4th, "Stage 2"] += 4
         raw_df.loc[raw_df["팀명"] == fixed_4th, "Total Points"] += 4
@@ -337,4 +352,4 @@ with tab1:
     st.dataframe(final_df[display_cols].style.apply(highlight_rows, axis=1), use_container_width=True)
 
     st.markdown("---")
-    st.info("💡 **실시간 업데이트 안내:** 대진표에서 승자를 선택해 3위(Lower Final 패자)나 4위(Lower R3 패자)가 확정되면, 표의 **[Total Points]**와 순위 규정에 즉시 반영됩니다!")
+    st.info("💡 **실시간 업데이트 안내:** 대진표에서 승자를 선택해 탈락 라운드가 결정되면 표의 **[Total Points]**와 순위(S2_Rank)가 공식 규정에 맞춰 즉시 갱신됩니다!")
